@@ -112,6 +112,22 @@ def suggest_monthly_amount(profile: Mapping[str, Any]) -> dict[str, Any]:
     return calculate_monthly_amount(profile)
 
 
+def get_amount_growth(amount: object, years: object, growth: Mapping[str, Any]) -> dict[str, Any]:
+    """Give the coach exact growth rows for one requested monthly amount."""
+    selected = next(
+        (row for row in growth.get("series", []) if int(row["year"]) == int(years)),
+        growth.get("totals", {}),
+    )
+    return {
+        "amount": str(amount),
+        "years": str(years),
+        "invested": str(selected.get("invested", "0")),
+        "middle": str(selected.get("middle", "0")),
+        "high": str(selected.get("high", "0")),
+        "headline": growth.get("headline", ""),
+    }
+
+
 def explain_plan_choice(
     user: Mapping[str, Any],
     plan: Mapping[str, Any],

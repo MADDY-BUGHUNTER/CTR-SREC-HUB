@@ -4,6 +4,7 @@ import subprocess
 import sys
 import os
 import time
+import re
 from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -20,7 +21,7 @@ from backend.auth import create_access_token, get_current_user, hash_password, v
 from backend.database import get_db, engine
 from backend.models import Base, InvestmentPlan, Profile, User
 from backend.report import record_progress_snapshot, router as report_router
-from backend.plan_api import router as plan_router
+from backend.plan_api import router as plan_router, _plan_response
 from backend.goal_logs import (
     ensure_goal_metadata,
     get_goal_progress_for_user,
@@ -45,6 +46,10 @@ from backend.calculators import (
     calculate_money_left_after_debts,
     calculate_readiness,
     calculate_sip_future_value,
+    calculate_plan_growth,
+    calculate_sip_future_value_months,
+    split_monthly_amount,
+    allocation_plan,
     suggest_monthly_amount,
 )
 from backend.investment_ideas import ideas_for_user, load_investment_ideas
@@ -58,6 +63,7 @@ from backend.chat_tools import (
     get_onboarding_status as onboarding_status_tool,
     suggest_monthly_amount as monthly_amount_tool,
     suggest_fix as suggest_plan_fix,
+    get_amount_growth as amount_growth_tool,
 )
 from backend.market_data import get_market_snapshot
 from backend.schemas import (
@@ -70,6 +76,8 @@ from backend.schemas import (
     ProjectionInput,
     ChatRequest,
 )
+
+ZERO = Decimal("0")  # Use one exact zero in all smart-amount calculations.
 
 
 @asynccontextmanager
@@ -439,6 +447,194 @@ def get_smart_monthly_amount(  # Recalculate whenever profile or plan values cha
     if profile is None:  # Return a friendly setup message if no profile exists.
         raise HTTPException(status_code=404, detail="Add your money details to get a monthly amount suggestion.")  # Explain what to do next.
     return _smart_monthly_amount_for_profile(profile, db)  # Recalculate from current saved data.
+
+
+@app.get("/smart-amount/growth")  # Project one selected amount through the user's own plan.
+def get_smart_amount_growth(  # Keep the projection user-private and based on Decimal values.
+    amount: Decimal,
+    years: int = 10,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:  # Return exact 1-to-30-year rows and expense facts.
+    if amount < ZERO:  # Stop negative monthly amounts before any calculation.
+        raise HTTPException(status_code=422, detail="The monthly amount cannot be negative.")
+    if years < 1 or years > 30:  # Keep chart and table ranges inside the requested 30 years.
+        raise HTTPException(status_code=422, detail="Choose between 1 and 30 years.")
+    profile = db.query(Profile).filter(Profile.user_id == user.id).first()  # Find only this signed-in user's profile.
+    if profile is None:  # A first-time user needs money details before growth makes sense.
+        raise HTTPException(status_code=404, detail="Add your money details to see monthly growth.")
+    plan = db.query(InvestmentPlan).filter(InvestmentPlan.user_id == user.id).first()  # Use only this account's saved plan.
+    catalog = {idea["id"]: idea for idea in load_investment_ideas()}  # Read one trusted idea list.
+    growth_parts = []
+    if plan is not None and plan.parts:  # Saved shares stay in control for a saved plan.
+        for saved_part in plan.parts:
+            share = Decimal(str(saved_part.get("share", "0")))
+            if share <= ZERO:  # Skip old or unused zero-share rows.
+                continue
+            idea = catalog.get(str(saved_part.get("idea_id", "")))
+            if idea is None:  # Never guess a missing investment row.
+                raise HTTPException(status_code=409, detail="Your saved plan has an unavailable investment.")
+            growth_parts.append({
+                "share": share,
+                "expected_return_low": Decimal(str(idea["expected_return_low"])),
+                "expected_return_mid": Decimal(str(idea["expected_return_mid"])),
+                "expected_return_high": Decimal(str(idea["expected_return_high"])),
+            })
+    if not growth_parts:  # A new or missing plan uses ArthMitra's suggested split.
+        fallback = allocation_plan(amount, profile.investor_type or "balanced")
+        fallback_total = sum((Decimal(row["monthly_amount"]) for row in fallback["parts"]), ZERO)
+        for row in fallback["parts"]:
+            row_amount = Decimal(row["monthly_amount"])
+            share = (row_amount / fallback_total * Decimal("100")) if fallback_total else ZERO
+            growth_parts.append({
+                "share": share,
+                "monthly_amount": row_amount,
+                "expected_return_low": Decimal(str(row["expected_return_low"])),
+                "expected_return_mid": Decimal(str(row["expected_return_mid"])),
+                "expected_return_high": Decimal(str(row["expected_return_high"])),
+            })
+    shares = [part["share"] for part in growth_parts]
+    part_amounts = split_monthly_amount(amount, shares)  # Add paise exactly across every part.
+    priced_parts = []
+    for part, part_amount in zip(growth_parts, part_amounts):
+        priced_parts.append({
+            **part,
+            "monthly_amount": part_amount,
+        })
+    suggestion = _smart_monthly_amount_for_profile(profile, db)
+    income = Decimal(str(suggestion["income"]))
+    emi = Decimal(str(suggestion["emi"]))
+    expenses = Decimal(str(suggestion["expenses"]))
+    highest_expenses_allowed = max(ZERO, income - emi - amount)
+    safe_expense_limit = max(ZERO, highest_expenses_allowed - Decimal(str(suggestion["cushion"])))
+    room_left = highest_expenses_allowed - expenses
+    nearest_goal = min(
+        (goal for goal in (profile.goals or []) if goal.get("amount") is not None),
+        key=lambda goal: int(goal.get("years") or 999),
+        default=None,
+    )
+    series = []
+    goal_forecasts = {}
+    for period in range(1, 31):
+        growth = calculate_plan_growth(priced_parts, period)
+        row = {
+            "year": period,
+            "invested": str(growth["invested"]),
+            "low": str(growth["low"]),
+            "middle": str(growth["mid"]),
+            "high": str(growth["high"]),
+            "money_earned_low": str(growth["earned_low"]),
+            "money_earned_middle": str(growth["earned_mid"]),
+            "money_earned_high": str(growth["earned_high"]),
+        }
+        if nearest_goal:
+            target = Decimal(str(nearest_goal["amount"]))
+            for level, value_key in (("low", "low"), ("middle", "mid"), ("high", "high")):
+                chance = min(Decimal("100"), growth[value_key] / target * Decimal("100"))
+                row[f"goal_chance_{level}"] = str(chance.quantize(Decimal("0.01")))
+        else:
+            for level in ("low", "middle", "high"):
+                row[f"goal_chance_{level}"] = "0"
+        series.append(row)
+    if nearest_goal:
+        target = Decimal(str(nearest_goal["amount"]))
+        for level, value_key in (("low", "low"), ("middle", "mid"), ("high", "high")):
+            reached = None
+            for period in range(1, 51):
+                value = calculate_plan_growth(priced_parts, period)[value_key]
+                if value >= target:
+                    reached = period
+                    break
+            goal_forecasts[level] = reached
+    selected = next(row for row in series if row["year"] == years)
+    return {
+        "amount": str(amount.quantize(Decimal("0.01"))),
+        "years": years,
+        "ready_to_invest": bool(suggestion["ready_to_invest"]),
+        "emergency_fund_months_at_basics": suggestion["emergency_fund_months_at_basics"],
+        "series": series,
+        "totals": {
+            "invested": selected["invested"],
+            "low": selected["low"],
+            "middle": selected["middle"],
+            "high": selected["high"],
+            "money_earned_low": selected["money_earned_low"],
+            "money_earned_middle": selected["money_earned_middle"],
+            "money_earned_high": selected["money_earned_high"],
+        },
+        "goal_forecasts": goal_forecasts,
+        "highest_expenses_allowed": str(highest_expenses_allowed),
+        "safe_expense_limit": str(safe_expense_limit),
+        "room_left": str(room_left),
+        "cushion": str(suggestion["cushion"]),
+        "headline": (
+            f"If you invest Rs {amount:,.0f} each month for {years} years, "
+            f"you could have about Rs {Decimal(selected['middle']):,.2f} (middle case). "
+            f"You put in Rs {Decimal(selected['invested']):,.2f}."
+        ),
+        "disclaimer": "Expected, not guaranteed. These are possible outcomes, not promises.",
+    }
+
+
+@app.post("/smart-amount/use")  # Save the selected amount for this signed-in user.
+@app.put("/smart-amount/use")  # Also accept a normal update-style save request.
+@app.patch("/smart-amount/use")  # Support clients that use a partial update.
+def use_smart_amount(
+    payload: dict[str, object],
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:  # Update the plan split and preferred amount atomically.
+    amount = Decimal(str(payload.get("amount", payload.get("monthly_amount", "0"))))
+    if amount < ZERO:  # Reject negative values before changing saved data.
+        raise HTTPException(status_code=422, detail="The monthly amount cannot be negative.")
+    profile = db.query(Profile).filter(Profile.user_id == user.id).first()  # Save only this user's details.
+    if profile is None:  # A profile is required for the plan and report to agree.
+        raise HTTPException(status_code=404, detail="Save your money details before choosing an amount.")
+    plan = db.query(InvestmentPlan).filter(InvestmentPlan.user_id == user.id).first()
+    if plan is not None and plan.parts:  # Keep the percentages already in the saved plan.
+        shares = [Decimal(str(part.get("share", "0"))) for part in plan.parts]
+        if sum(shares, ZERO) != Decimal("100"):  # Do not silently save a broken percentage split.
+            raise HTTPException(status_code=409, detail="Your saved plan shares need to be fixed first.")
+        plan.monthly_amount = str(amount.quantize(Decimal("0.01")))
+        plan.parts = [
+            {"idea_id": str(part["idea_id"]), "share": str(Decimal(str(part["share"])))}
+            for part in plan.parts
+        ]
+    else:  # Create ArthMitra's suggested split when no saved plan exists.
+        allocation = allocation_plan(amount, profile.investor_type or "balanced")
+        fallback_total = sum((Decimal(row["monthly_amount"]) for row in allocation["parts"]), ZERO)
+        plan = InvestmentPlan(
+            user_id=user.id,
+            monthly_amount=str(amount.quantize(Decimal("0.01"))),
+            parts=[],
+            tax_saving_80c=False,
+            tasks=[],
+            is_stale=True,
+        )
+        plan.parts = [
+            {
+                "idea_id": str(row["idea_id"]),
+                "share": str(
+                    (Decimal(str(row["monthly_amount"])) / fallback_total * Decimal("100")).quantize(Decimal("0.01"))
+                    if fallback_total else ZERO
+                ),
+            }
+            for row in allocation["parts"]
+        ]
+        db.add(plan)
+    profile.wanted_monthly_amount = str(amount.quantize(Decimal("0.01")))
+    invalidate_saved_analysis(db, user.id)
+    db.commit()
+    db.refresh(plan)
+    db.refresh(profile)
+    return {
+        "message": "Saved. Re-check your plan.",
+        "amount": str(amount.quantize(Decimal("0.01"))),
+        "monthly_amount": str(amount.quantize(Decimal("0.01"))),
+        "parts": plan.parts,
+        "plan": _plan_response(plan),
+        "suggestion": _smart_monthly_amount_for_profile(profile, db),
+    }
 
 
 @app.post("/smart-monthly-amount/preview")  # Preview edits without changing saved profile data.
@@ -894,6 +1090,17 @@ def chat(
         return {
             "answer": result["answer"],
             "tool": "get_goal_progress",
+            "result": stringify_decimals(result),
+        }
+
+    amount_match = re.search(r"(?:rs\.?|rupees?|₹)\s*([0-9][0-9,]*)", question)
+    if amount_match and any(word in question for word in ("what if", "invest", "growth")):
+        amount = Decimal(amount_match.group(1).replace(",", ""))
+        growth = get_smart_amount_growth(amount, 10, user, db)
+        result = amount_growth_tool(amount, 10, growth)
+        return {
+            "answer": growth["headline"],
+            "tool": "get_amount_growth",
             "result": stringify_decimals(result),
         }
 

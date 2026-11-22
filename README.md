@@ -104,6 +104,14 @@ The API recalculates the result from the latest profile, debt, goal, and saved
 plan data. Optional 10% yearly step-up projections are calculated month by
 month, with each selected plan part using its own return assumption.
 
+The Smart monthly amount card now turns Comfortable, Recommended, Stretch,
+You want and a custom amount into live choices. `GET /smart-amount/growth`
+uses the saved plan when it exists, or ArthMitra's suggested split otherwise.
+Every plan part is split and grown with its own Low, Middle or High Decimal SIP
+rate. The endpoint returns 1-30 years, invested amounts, earned amounts, goal
+chances and expense limits. `POST /smart-amount/use` saves the selected amount
+and updates the plan without changing its percentage shares.
+
 The app's one shared `APP_CREDIT` setting is in `frontend/app-config.json`.
 It supplies the login and page footer, About page, report and PDF credit, and
 the HTML author tag. **ArthMitra is developed by CTR-SREC-HUB**.

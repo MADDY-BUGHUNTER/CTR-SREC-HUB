@@ -1221,6 +1221,45 @@ def build_report_data(user: User, db: Session, period: str = "since_started") ->
         total_invested,
         goals,
     )
+    selected_amount = (
+        _decimal(profile.wanted_monthly_amount)
+        if profile is not None and profile.wanted_monthly_amount
+        else (_decimal(monthly_amount_suggestion["recommended"]))
+    )
+    if plan_section["parts"]:
+        total_share = sum((_decimal(part["share"]) for part in plan_section["parts"]), ZERO)
+        smart_parts = []
+        remaining = selected_amount
+        for index, part in enumerate(plan_section["parts"]):
+            share = _decimal(part["share"])
+            part_amount = (
+                (selected_amount * share / total_share).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                if index < len(plan_section["parts"]) - 1
+                else remaining
+            )
+            remaining -= part_amount
+            smart_parts.append({
+                "monthly_amount": part_amount,
+                "expected_return_low": _decimal(part["expected_return_low"]),
+                "expected_return_mid": _decimal(part["expected_return_mid"]),
+                "expected_return_high": _decimal(part["expected_return_high"]),
+            })
+        smart_growth = calculate_plan_growth(smart_parts, 10)
+    else:
+        smart_growth = {
+            "low": ZERO,
+            "mid": ZERO,
+            "high": ZERO,
+            "invested": selected_amount * Decimal("120"),
+        }
+    outlook["smart_amount"] = {
+        "amount": _money(selected_amount),
+        "years": 10,
+        "invested": _money(smart_growth["invested"]),
+        "low": _money(smart_growth["low"]),
+        "middle": _money(smart_growth["mid"]),
+        "high": _money(smart_growth["high"]),
+    }
     comparison = _snapshot_comparison(past, present)
     snapshot_history = [
         {

@@ -670,11 +670,32 @@ def suggest_monthly_amount(profile: Mapping[str, object]) -> dict[str, object]:
         if surplus > ZERO
         else "There is no money left after expenses and EMI. Try the steps below before investing."
     )
+    highest_expenses_allowed = _money(max(ZERO, income - emis - basics_amount))
+    safe_expense_limit = _money(max(ZERO, highest_expenses_allowed - cushion))
+    room_left = _money(highest_expenses_allowed - expenses)
+    expense_tip_amount = _round_down_hundred(max(ZERO, expenses - highest_expenses_allowed))
+    debt_extra = []
+    for debt in debts:
+        if _non_negative(debt.get("interest_rate", debt.get("annual_rate", 0)), "Debt interest rate") > Decimal("15"):
+            debt_extra.append({
+                "name": str(debt.get("name", "Debt")),
+                "interest_rate": _money(_non_negative(debt.get("interest_rate", debt.get("annual_rate", 0)), "Debt interest rate")),
+                "emi": _money(_non_negative(debt.get("emi", 0), "Debt EMI")),
+                "balance": _money(_non_negative(debt.get("amount", debt.get("balance", 0)), "Debt balance")),
+            })
     now = datetime.now(timezone.utc)
     return {
         "wanted": _money(wanted),
         "can": _money(available),
         "surplus": _money(surplus),
+        "income": _money(income),
+        "expenses": _money(expenses),
+        "emi": _money(emis),
+        "highest_expenses_allowed": highest_expenses_allowed,
+        "safe_expense_limit": safe_expense_limit,
+        "room_left": room_left,
+        "expense_tip_amount": expense_tip_amount,
+        "high_interest_debt": debt_extra,
         "comfortable": comfortable,
         "recommended": recommended,
         "stretch": stretch,
@@ -703,7 +724,7 @@ def suggest_monthly_amount(profile: Mapping[str, object]) -> dict[str, object]:
         "tips": tips,
         "plain_english": plain_english,
         "calculated_at": now.isoformat().replace("+00:00", "Z"),
-        "calculated_at_local": now.astimezone(ZoneInfo("Asia/Kolkata")).strftime("%d %b %Y, %-I:%M %p"),
+        "calculated_at_local": now.astimezone(ZoneInfo("Asia/Kolkata")).strftime("%d %b %Y, %I:%M %p"),
     }
 
 

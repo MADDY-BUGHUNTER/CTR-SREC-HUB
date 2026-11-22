@@ -79,7 +79,7 @@ function money(value) {
   const lastThree = integer.slice(-3);
   const leading = integer.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ",");
   const grouped = leading ? `${leading},${lastThree}` : lastThree;
-  return `${negative ? "-" : ""}₹${grouped}.${(fraction + "00").slice(0, 2)}`;
+  return `${negative ? "-" : ""}\u20b9${grouped}.${(fraction + "00").slice(0, 2)}`;
 }
 
 function smartAmountMarkup(suggestion) { // Show only amounts calculated by the backend.
@@ -88,7 +88,7 @@ function smartAmountMarkup(suggestion) { // Show only amounts calculated by the 
     <span class="amount-bar-part ${escapeHtml(key)}" style="width:${escapeHtml(item.percent)}%" title="${barLabels[key]}: ${money(item.amount)}"></span>
   `).join(""); // Finish the backend-sized bar parts.
   const barLegend = Object.entries(suggestion.stacked_bar).map(([key, item]) => `
-    <span><i class="amount-legend ${escapeHtml(key)}"></i>${barLabels[key]} · ${money(item.amount)}</span>
+    <span><i class="amount-legend ${escapeHtml(key)}"></i>${barLabels[key]}   ${money(item.amount)}</span>
   `).join(""); // Show the exact rupees beside every bar color.
   const goalNeed = suggestion.goal_need === null ? "Add a goal" : money(suggestion.goal_need); // Avoid a fake zero when no goal exists.
   const months = suggestion.months_to_goal_at_recommended === null
@@ -100,14 +100,42 @@ function smartAmountMarkup(suggestion) { // Show only amounts calculated by the 
     <h2 id="smart-amount-title">Smart monthly amount</h2>
     <p>${escapeHtml(suggestion.plain_english)}</p>
     <div class="smart-amount-options">
-      <article class="smart-amount-option"><span>Comfortable</span><strong>${money(suggestion.comfortable)}</strong><small>Easy to keep up.</small></article>
-      <article class="smart-amount-option recommended"><span>Recommended</span><strong>${money(suggestion.recommended)}</strong><small>${suggestion.ready_to_invest ? "Keeps room for surprises." : "Use this for your basics first."}</small></article>
-      <article class="smart-amount-option"><span>Stretch</span><strong>${money(suggestion.stretch)}</strong><small>Harder to keep up.</small></article>
+      <button type="button" class="smart-amount-option" data-smart-option="comfortable" role="radio" aria-checked="false"><span>Comfortable</span><strong>${money(suggestion.comfortable)}</strong><small>Easy to keep up.</small></button>
+      <button type="button" class="smart-amount-option selected" data-smart-option="recommended" role="radio" aria-checked="true"><span>Recommended <b class="smart-check">\u2713</b></span><strong>${money(suggestion.recommended)}</strong><small>${suggestion.ready_to_invest ? "Keeps room for surprises." : "Use this for your basics first."}</small></button>
+      <button type="button" class="smart-amount-option" data-smart-option="stretch" role="radio" aria-checked="false"><span>Stretch</span><strong>${money(suggestion.stretch)}</strong><small>Harder to keep up.</small></button>
     </div>
     <div class="smart-amount-comparison">
-      <div><span>You want</span><strong>${money(suggestion.wanted)}</strong><small class="status-chip ${suggestion.verdict.startsWith("Too high") ? "watch" : "good"}">${suggestion.verdict.startsWith("Too high") ? "!" : "✓"} ${escapeHtml(suggestion.verdict)}</small></div>
+      <div><span>You want</span><strong>${money(suggestion.wanted)}</strong><small class="status-chip ${suggestion.verdict.startsWith("Too high") ? "watch" : "good"}">${suggestion.verdict.startsWith("Too high") ? "!" : "\u2713"} ${escapeHtml(suggestion.verdict)}</small></div>
       <div><span>You can</span><strong>${money(suggestion.can)}</strong></div>
       <div><span>Your goal needs</span><strong>${goalNeed}</strong></div>
+    </div>
+    <div class="smart-amount-own" role="group" aria-label="Try your own monthly amount">
+      <button type="button" class="smart-amount-option own-option" data-smart-option="wanted" role="radio" aria-checked="false"><span>You want <b class="smart-check"></b></span><strong>${money(suggestion.wanted)}</strong></button>
+      <label>Try your own amount
+        <input class="smart-own-slider" type="range" min="500" max="${Math.max(500, Math.floor(Number(suggestion.surplus)))}" step="100" value="${escapeHtml(suggestion.wanted)}" />
+      </label>
+      <label>Monthly amount
+        <input class="smart-own-number" type="number" min="0" step="100" value="${escapeHtml(suggestion.wanted)}" />
+      </label>
+      <p class="smart-own-warning" role="status"></p>
+      <button type="button" class="primary-button smart-use-amount">Use this amount</button>
+      <span class="smart-save-message" role="status"></span>
+    </div>
+    <div class="smart-growth-controls">
+      <label>Years <input class="smart-growth-years" type="number" min="1" max="30" step="1" value="10" /></label>
+      <p class="smart-growth-headline" role="status"></p>
+      <div class="loading smart-growth-loading" style="display:none" aria-label="Loading growth"></div>
+      <div class="chart-wrap"><canvas class="smart-growth-chart" aria-label="Low, middle and high growth for the selected amount"></canvas></div>
+      <p>A smaller amount is easier to keep up. A bigger amount grows more but leaves less room for surprises.</p>
+      <p class="smart-expense-limit"></p>
+      <label>What if my expenses change?
+        <input class="smart-expense-slider" type="range" min="0" max="${Math.max(1, Math.ceil(Number(suggestion.income || 0)))}" step="100" value="${escapeHtml(suggestion.expenses)}" />
+      </label>
+      <p class="smart-expense-result"></p>
+      <a href="#" class="smart-update-expenses">Update my expenses</a>
+      <div class="smart-amount-table table-scroll"></div>
+      <div class="chart-wrap"><canvas class="smart-options-chart" aria-label="Middle growth lines for each monthly amount option"></canvas></div>
+      <ul class="smart-tip-list"></ul>
     </div>
     <div class="amount-gauge" role="img" aria-label="Comparison of wanted, available and goal-needed amounts">
       <span class="gauge-marker wanted" style="left:${escapeHtml(suggestion.gauge.wanted_percent)}%"></span>
@@ -130,10 +158,10 @@ function smartAmountMarkup(suggestion) { // Show only amounts calculated by the 
       <p class="smart-growth-output"
         data-flat-five="${escapeHtml(fiveYearGrowth.flat)}" data-step-five="${escapeHtml(fiveYearGrowth.step_up)}"
         data-flat-ten="${escapeHtml(tenYearGrowth.flat)}" data-step-ten="${escapeHtml(tenYearGrowth.step_up)}">
-        Without step-up: 5 years ${money(fiveYearGrowth.flat)} · 10 years ${money(tenYearGrowth.flat)}.
+        Without step-up: 5 years ${money(fiveYearGrowth.flat)}   10 years ${money(tenYearGrowth.flat)}.
       </p>
     </details>
-    <small>Last calculated ${escapeHtml(suggestion.calculated_at_local)} · Estimates are assumptions, not guarantees.</small>
+    <small>Last calculated ${escapeHtml(suggestion.calculated_at_local)}   Estimates are assumptions, not guarantees.</small>
   </section>`; // Finish the simple monthly amount card.
 } // Finish the smart amount display helper.
 
@@ -144,10 +172,202 @@ function bindSmartAmountToggles() { // Let users compare flat and step-up amount
       const label = toggle.checked ? "With 10% step-up" : "Without step-up"; // Keep the selected case clear.
       const five = toggle.checked ? output.dataset.stepFive : output.dataset.flatFive; // Read the matching five-year result.
       const ten = toggle.checked ? output.dataset.stepTen : output.dataset.flatTen; // Read the matching ten-year result.
-      output.textContent = `${label}: 5 years ${money(five)} · 10 years ${money(ten)}.`; // Display backend amounts without recalculating.
+      output.textContent = `${label}: 5 years ${money(five)}   10 years ${money(ten)}.`; // Display backend amounts without recalculating.
     }); // Finish one optional switch.
   }); // Finish all amount cards.
 } // Finish smart amount switch binding.
+
+function bindSmartAmountControls(suggestion) { // Make option cards, slider and growth all update from the backend.
+  const cards = document.querySelectorAll(".smart-amount-card"); // Find each smart card on the page.
+  cards.forEach((card) => { // Bind one card without crossing card state.
+    if (card.dataset.smartBound) return; // Do not attach the same listeners twice.
+    card.dataset.smartBound = "true";
+    const number = card.querySelector(".smart-own-number");
+    const slider = card.querySelector(".smart-own-slider");
+    const years = card.querySelector(".smart-growth-years");
+    const expenseSlider = card.querySelector(".smart-expense-slider");
+    let selectedAmount = suggestion.recommended;
+    let timer = null;
+
+    const selectAmount = (amount, sourceOption) => { // Update the selected radio style and start a live fetch.
+      selectedAmount = Math.max(0, Math.round(Number(amount) / 100) * 100);
+      card.querySelectorAll(".smart-amount-option").forEach((option) => {
+        const selected = option.dataset.smartOption === sourceOption;
+        option.classList.toggle("selected", selected);
+        option.setAttribute("aria-checked", String(selected));
+        const check = option.querySelector(".smart-check");
+        if (check) check.textContent = selected ? "\u2713" : "";
+      });
+      if (number) number.value = String(selectedAmount);
+      if (slider) slider.value = String(Math.min(Number(slider.max), selectedAmount));
+      clearTimeout(timer);
+      timer = setTimeout(() => updateSmartGrowth(card, selectedAmount, Number(years?.value || 10), suggestion), 300);
+    };
+
+    card.querySelectorAll("[data-smart-option]").forEach((option) => {
+      option.addEventListener("click", () => {
+        const name = option.dataset.smartOption;
+        const amount = name === "comfortable" ? suggestion.comfortable
+          : name === "stretch" ? suggestion.stretch
+          : name === "wanted" ? suggestion.wanted
+          : suggestion.recommended;
+        selectAmount(amount, name);
+      });
+      option.addEventListener("keydown", (event) => {
+        if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+        event.preventDefault();
+        const options = [...card.querySelectorAll("[data-smart-option]")];
+        const index = options.indexOf(option);
+        const next = (index + (event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+        options[next].focus();
+        options[next].click();
+      });
+    });
+    if (slider) slider.addEventListener("input", () => selectAmount(slider.value, "custom"));
+    if (number) number.addEventListener("input", () => {
+      const own = Math.max(0, Number(number.value || 0));
+      if (slider) slider.value = String(Math.min(Number(slider.max), own));
+      clearTimeout(timer);
+      timer = setTimeout(() => updateSmartGrowth(card, own, Number(years?.value || 10), suggestion), 300);
+    });
+    if (years) years.addEventListener("change", () => updateSmartGrowth(card, selectedAmount, Number(years.value), suggestion));
+    if (expenseSlider) expenseSlider.addEventListener("input", () => updateExpenseWhatIf(card, expenseSlider.value, suggestion));
+    const saveButton = card.querySelector(".smart-use-amount");
+    if (saveButton) saveButton.addEventListener("click", async () => {
+      if (!window.confirm(`Save Rs ${selectedAmount.toLocaleString("en-IN")} as your monthly investment?`)) return;
+      try {
+        saveButton.disabled = true;
+        const saved = await apiRequest("/smart-amount/use", {
+          method: "POST",
+          body: JSON.stringify({ amount: String(selectedAmount) }),
+        });
+        card.querySelector(".smart-save-message").textContent = saved.message;
+        await updateSmartGrowth(card, selectedAmount, Number(years?.value || 10), saved.suggestion);
+      } catch (error) {
+        card.querySelector(".smart-save-message").textContent = error.message;
+      } finally {
+        saveButton.disabled = false;
+      }
+    });
+    const updateLink = card.querySelector(".smart-update-expenses");
+    if (updateLink) updateLink.addEventListener("click", (event) => {
+      event.preventDefault();
+      navigate("edit-profile");
+    });
+    updateSmartGrowth(card, selectedAmount, 10, suggestion);
+  });
+}
+
+async function updateSmartGrowth(card, amount, years, suggestion) { // Fetch live growth and redraw only this card.
+  const loading = card.querySelector(".smart-growth-loading");
+  if (loading) loading.style.display = "block";
+  try {
+    if (Number(suggestion.surplus) <= 0) {
+      card.querySelector(".smart-growth-headline").textContent = "There is no money left after expenses and EMI. Try the tips below before investing.";
+      card.querySelector(".smart-growth-chart").style.display = "none";
+      card.querySelector(".smart-options-chart").style.display = "none";
+      card.querySelector(".smart-amount-table").innerHTML = "";
+      card.querySelector(".smart-tip-list").innerHTML = (suggestion.tips || []).map((tip) => `<li>${escapeHtml(tip)}</li>`).join("");
+      return;
+    }
+    if (!suggestion.ready_to_invest) {
+      card.querySelector(".smart-growth-headline").textContent =
+        `Not ready to invest yet. The emergency fund may take ${escapeHtml(suggestion.emergency_fund_months_at_basics)} months at this amount.`;
+      card.querySelector(".smart-growth-chart").style.display = "none";
+      card.querySelector(".smart-options-chart").style.display = "none";
+      card.querySelector(".smart-tip-list").innerHTML = (suggestion.tips || []).map((tip) => `<li>${escapeHtml(tip)}</li>`).join("");
+      return;
+    }
+    const result = await apiRequest(`/smart-amount/growth?amount=${encodeURIComponent(amount)}&years=${encodeURIComponent(years)}`, { cache: "no-store" });
+    card.querySelector(".smart-growth-headline").textContent = result.headline;
+    const highest = DecimalFromString(result.highest_expenses_allowed);
+    const expenses = DecimalFromString(suggestion.expenses);
+    const room = highest - expenses;
+    const roomText = room < 0 ? `<strong class="error">! Over by ${money(Math.abs(room).toFixed(2))}</strong>` : `${money(room.toFixed(2))}`;
+    card.querySelector(".smart-expense-limit").innerHTML =
+      `To invest Rs ${Number(amount).toLocaleString("en-IN")} each month, keep your monthly expenses under ${money(highest.toFixed(2))}. Your expenses now: ${money(expenses.toFixed(2))}. Room left: ${roomText}.`;
+    const ownWarning = card.querySelector(".smart-own-warning");
+    if (ownWarning) ownWarning.textContent = Number(amount) > Number(suggestion.surplus)
+      ? "This is more than you have left each month."
+      : "";
+    drawSmartGrowth(card, result);
+    await updateSmartTable(card, amount, years, suggestion);
+  } catch (error) {
+    card.querySelector(".smart-growth-headline").textContent = error.message;
+  } finally {
+    if (loading) loading.style.display = "none";
+  }
+}
+
+function DecimalFromString(value) { // Read exact decimal strings as numbers only for display, never for growth math.
+  return Number(value);
+}
+
+function drawSmartGrowth(card, result) { // Draw one low-middle-high band from backend rows.
+  const canvas = card.querySelector(".smart-growth-chart");
+  if (!canvas || !window.Chart) return;
+  replaceChart(canvas, {
+    type: "line",
+    data: {
+      labels: result.series.map((row) => `${row.year}`),
+      datasets: [
+        { label: "Low", data: result.series.map((row) => Number(row.low)), borderColor: "#D97706", tension: 0.15 },
+        { label: "Middle", data: result.series.map((row) => Number(row.middle)), borderColor: "#2563EB", borderWidth: 3, tension: 0.15 },
+        { label: "High", data: result.series.map((row) => Number(row.high)), borderColor: "#10B981", tension: 0.15 },
+      ],
+    },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } },
+  });
+}
+
+async function updateSmartTable(card, amount, years, suggestion) { // Compare all five choices using one backend growth call per row.
+  const names = [
+    ["Comfortable", suggestion.comfortable],
+    ["Recommended", suggestion.recommended],
+    ["Stretch", suggestion.stretch],
+    ["You want", suggestion.wanted],
+    ["Your own amount", amount],
+  ];
+  const rows = await Promise.all(names.map(async ([name, rowAmount]) => {
+    const result = await apiRequest(`/smart-amount/growth?amount=${encodeURIComponent(rowAmount)}&years=${encodeURIComponent(years)}`, { cache: "no-store" });
+    return { name, amount: rowAmount, result };
+  }));
+  const table = card.querySelector(".smart-amount-table");
+  table.innerHTML = `<table><thead><tr><th>Option</th><th>Monthly amount</th><th>Invested in ${years} years</th><th>Low</th><th>Middle</th><th>High</th><th>Goal chance</th><th>Years to reach goal</th><th>Highest expenses allowed</th><th>Room left</th></tr></thead><tbody>${rows.map(({ name, amount: rowAmount, result }) => {
+    const highest = DecimalFromString(result.highest_expenses_allowed);
+    const room = highest - DecimalFromString(suggestion.expenses);
+    return `<tr class="${Number(rowAmount) === Number(amount) ? "selected-row" : ""}">
+      <td>${escapeHtml(name)}</td><td>${money(rowAmount)}</td><td>${money(result.totals.invested)}</td>
+      <td>${money(result.totals.low)}</td><td>${money(result.totals.middle)}</td><td>${money(result.totals.high)}</td>
+      <td>${escapeHtml(result.totals.goal_chance || (result.series[years - 1]?.goal_chance_middle || "0"))}%</td>
+      <td>${result.goal_forecasts?.middle ? `${result.goal_forecasts.middle} years` : "Not reached"}</td>
+      <td>${money(highest.toFixed(2))}</td><td class="${room < 0 ? "error" : ""}">${room < 0 ? `! Over by ${money(Math.abs(room).toFixed(2))}` : money(room.toFixed(2))}</td>
+    </tr>`;
+  }).join("")}</tbody></table>`;
+  const canvas = card.querySelector(".smart-options-chart");
+  if (canvas && window.Chart) replaceChart(canvas, {
+    type: "line",
+    data: {
+      labels: rows[0].result.series.map((row) => `${row.year}`),
+      datasets: rows.map(({ name, result }, index) => ({
+        label: name,
+        data: result.series.map((row) => Number(row.middle)),
+        borderColor: ["#2563EB", "#10B981", "#D97706", "#8B5CF6", "#64748B"][index],
+        tension: 0.15,
+      })),
+    },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } },
+  });
+}
+
+function updateExpenseWhatIf(card, expenses, suggestion) { // Show only a temporary expense and investment result.
+  const income = Number(suggestion.income || 0);
+  const emi = Number(suggestion.emi || 0);
+  const selectedAmount = Number(card.querySelector(".smart-own-number")?.value || suggestion.recommended);
+  const left = Math.floor((income - emi - Number(expenses)) / 100) * 100;
+  card.querySelector(".smart-expense-result").textContent =
+    `Amount left to invest: ${money(left < 0 ? 0 : left)}${left < 0 ? ". Money out is more than money in." : ""}`;
+}
 
 // This function displays the current step in the five-step setup.
 function onboardingProgress(step, title) {
@@ -156,7 +376,7 @@ function onboardingProgress(step, title) {
     : "";
   setupNotice = "";
   return `<div class="onboarding-progress">
-    <p><strong>Step ${step} of 5</strong> · ${escapeHtml(title)}</p>
+    <p><strong>Step ${step} of 5</strong>   ${escapeHtml(title)}</p>
     <div class="progress" role="progressbar" aria-valuenow="${step}" aria-valuemin="1" aria-valuemax="5">
       <div class="progress-bar" style="width:${step * 20}%"></div>
     </div>${message}
@@ -474,7 +694,7 @@ function renderDashboard(health, readiness, topPicks, savedPlan, goalProgress, s
           ? `<p class="status">Your details changed. Re-check your plan to refresh the score and goal estimate.</p>
             <button id="reanalyze-plan" type="button">Re-check my plan</button>`
           : `<div class="dashboard-grid">
-              <div class="stat"><strong>Plan score</strong><p>${analysis.score} / 100 · ${escapeHtml(analysis.grade)}</p></div>
+              <div class="stat"><strong>Plan score</strong><p>${analysis.score} / 100   ${escapeHtml(analysis.grade)}</p></div>
               <div class="stat"><strong>Weighted risk</strong><p>${escapeHtml(analysis.weighted_risk)} / 5</p></div>
               <div class="stat"><strong>Goal chance</strong><p>${analysis.goal
                 ? `${escapeHtml(analysis.goal.chance_percent)}% for ${escapeHtml(analysis.goal.name)}`
@@ -505,9 +725,9 @@ function renderDashboard(health, readiness, topPicks, savedPlan, goalProgress, s
         <h2>Your goals</h2>
         ${goals.length ? goals.map((progress) => { // Draw every goal from its real progress response.
           const goal = progress.goal; // Read the goal name and target returned by the backend.
-          return `<p>${escapeHtml(goal.name)} · ${money(goal.amount)} · ${goal.years} years</p>
+          return `<p>${escapeHtml(goal.name)}   ${money(goal.amount)}   ${goal.years} years</p>
             <progress value="${escapeHtml(progress.value_progress_percent)}" max="100" aria-label="${escapeHtml(goal.name)} real investment progress"></progress>
-            <small>Chance with your real investments: ${escapeHtml(progress.chance_with_real_investments)}% · ${escapeHtml(progress.value_label)}</small>`;
+            <small>Chance with your real investments: ${escapeHtml(progress.chance_with_real_investments)}%   ${escapeHtml(progress.value_label)}</small>`;
         }).join("") : "<p>Add a goal to see your progress here.</p>"}
         ${goals.length ? `<button type="button" class="secondary-button" data-page="goals">Open goal log</button>` : ""}<!-- Link the dashboard progress to the full log page. -->
       </div>
@@ -530,6 +750,7 @@ function renderDashboard(health, readiness, topPicks, savedPlan, goalProgress, s
   document.getElementById("open-journey")?.addEventListener("click", () => navigate("journey"));
   bindIdeaButtons();
   bindSmartAmountToggles(); // Connect the optional step-up view to its saved backend totals.
+  bindSmartAmountControls(smartAmount); // Add live amount, expense and growth controls.
   if (!savedPlan.is_stale && savedPlan.exists) drawSavedPlan(savedPlan);
   drawDashboardGrowth(monthlyLeft);
 }
@@ -605,7 +826,7 @@ function ideaCard(idea) {
     `<span class="${index < idea.risk_level ? "filled" : ""}"></span>`).join("");
   return `
     <article class="idea-card ${idea.locked ? "locked" : ""}">
-      <p class="eyebrow">${idea.asset_class === "Equity" ? "📈" : idea.asset_class === "Gold" ? "🪙" : "🏦"}
+      <p class="eyebrow">${idea.asset_class === "Equity" ? "" : idea.asset_class === "Gold" ? "" : ""}
         ${escapeHtml(idea.asset_class)}</p>
       <h3>${escapeHtml(idea.name)}</h3>
       <p><span class="risk-meter" aria-label="Risk ${idea.risk_level} of 5">${bars}</span>${escapeHtml(idea.risk_words)}</p>
@@ -617,9 +838,9 @@ function ideaCard(idea) {
         <span>Keep for ${escapeHtml(idea.time_needed)}</span>
         <span>Access: ${escapeHtml(idea.money_access)}</span>
       </div>
-      <p><span class="match-badge">Match for you · ${escapeHtml(idea.match_score)}%</span></p>
+      <p><span class="match-badge">Match for you   ${escapeHtml(idea.match_score)}%</span></p>
       <p>${escapeHtml(idea.match_reason)}</p>
-      ${idea.locked ? `<p class="error"><span aria-hidden="true">🔒</span> ${escapeHtml(idea.lock_reason)}</p>` : ""}
+      ${idea.locked ? `<p class="error"><span aria-hidden="true"></span> ${escapeHtml(idea.lock_reason)}</p>` : ""}
       <div class="actions">
         <button type="button" data-idea-detail="${escapeHtml(idea.id)}">Learn more</button>
         <button type="button" class="secondary-button" data-idea-growth="${escapeHtml(idea.id)}">See my plan growth</button><!-- Keep idea cards pointed at the user's saved plan. -->
@@ -831,9 +1052,9 @@ function drawPlanProjectorCharts(result) {
 function renderPlanProjector(result) {
   const selectedPoint = result.series.find((point) => point.year === projectorYears) || result.series[result.series.length - 1]; // Read the selected year's backend result.
   const scenarioNames = { low: "low", mid: "middle", high: "high" }; // Use plain-English case names in the summary.
-  const monthlyRupees = `Rs ${money(result.monthly_amount).replace(/^₹/, "")}`; // Keep the requested simple rupee wording.
-  const futureRupees = `Rs ${money(selectedPoint[projectorScenario]).replace(/^₹/, "")}`; // Format the selected scenario result.
-  const investedRupees = `Rs ${money(selectedPoint.invested).replace(/^₹/, "")}`; // Show the backend total invested.
+  const monthlyRupees = `Rs ${money(result.monthly_amount).replace(/^\u20b9/, "")}`; // Keep the requested simple rupee wording.
+  const futureRupees = `Rs ${money(selectedPoint[projectorScenario]).replace(/^\u20b9/, "")}`; // Format the selected scenario result.
+  const investedRupees = `Rs ${money(selectedPoint.invested).replace(/^\u20b9/, "")}`; // Show the backend total invested.
   app.innerHTML = `<section class="card">
     <h1>Growth projector</h1>
     <p>Expected, not guaranteed.</p>
@@ -1052,7 +1273,7 @@ function renderChoiceAmount(onboarding, suggestion, isSetup, smartAmount) {
         </select>
       </label>
       <div id="smart-amount-preview">${smartAmountMarkup(smartAmount)}</div>
-      <small>Each saved plan part must be at least ₹500 and at least 10% of the total.</small>
+      <small>Each saved plan part must be at least \u20b9500 and at least 10% of the total.</small>
       <label>Do you want to save tax under 80C?
         <select id="tax-saving-80c" name="tax_saving_80c">
           <option value="false" ${planDraft.taxSaving80c ? "" : "selected"}>No</option>
@@ -1079,6 +1300,7 @@ function renderChoiceAmount(onboarding, suggestion, isSetup, smartAmount) {
     </form>
   </section>`;
   bindSmartAmountToggles();
+  bindSmartAmountControls(smartAmount);
   let amountTouched = Boolean(userProfile.wanted_monthly_amount || planDraft.selectedIds.length); // Do not replace a saved amount the user chose.
   document.getElementById("choice-amount-form").addEventListener("change", async (event) => {
     if (event.target.name === "tax_saving_80c") {
@@ -1118,6 +1340,7 @@ function renderChoiceAmount(onboarding, suggestion, isSetup, smartAmount) {
       smartAmountSuggestion = preview; // Keep the newest backend preview for the next screen.
       document.getElementById("smart-amount-preview").innerHTML = smartAmountMarkup(preview);
       bindSmartAmountToggles();
+      bindSmartAmountControls(preview);
       const updated = await loadChoiceSuggestion(planDraft.monthlyAmount);
       const warning = document.getElementById("amount-warning");
       warning.className = updated.amount_over_safe ? "error" : "status";
@@ -1166,7 +1389,7 @@ function renderChoiceIdeas(onboarding, suggestion, isSetup) {
       <span>${escapeHtml(idea.school_explanation)}</span>
       ${idea.locked
         ? `<span class="error">Fix basics first: ${escapeHtml(idea.lock_reason)}</span>` : ""}
-      <small>Risk ${idea.risk_level} of 5 · Start from ${money(idea.minimum_to_start)}</small>
+      <small>Risk ${idea.risk_level} of 5   Start from ${money(idea.minimum_to_start)}</small>
     </label>`).join("");
   const basicsMarkup = (suggestion.basics || []).map((idea) => `
     <label class="choice-card basics-choice">
@@ -1174,7 +1397,7 @@ function renderChoiceIdeas(onboarding, suggestion, isSetup) {
         ${planDraft.selectedIds.includes(idea.id) ? "checked" : ""} />
       <strong>${escapeHtml(idea.name)}</strong>
       <span>${escapeHtml(idea.reason)}</span>
-      <small>Basics first · Not an investment</small>
+      <small>Basics first   Not an investment</small>
     </label>`).join("");
   app.innerHTML = `<section class="card">
     ${isSetup ? onboardingProgress(4, "Your investment choices") : ""}
@@ -1389,7 +1612,7 @@ async function refreshPlanPreview() {
     target.innerHTML = `
       <div class="chart-wrap"><canvas id="parts-preview-chart" aria-label="Live monthly plan split"></canvas></div>
       <ul>${result.parts.map((part, index) => `<li>
-        Part ${index + 1}: ${escapeHtml(part.name)} · ${escapeHtml(part.share)}% =
+        Part ${index + 1}: ${escapeHtml(part.name)}   ${escapeHtml(part.share)}% =
         ${money(part.monthly_amount)}
         ${part.below_minimum ? `<span class="status">Needs at least ${money(part.minimum_to_start)} and 10% of the plan to save.</span>` : ""}
       </li>`).join("")}</ul>
@@ -1485,16 +1708,16 @@ function renderPlanReview(analysis, comparison, minePreview, suggestedPreview) {
     <h1>Review your plan</h1>
     <p>These are estimates based on assumptions, not promises. A high score cannot remove investment risk.</p>
     <div class="dashboard-grid">
-      <div class="stat"><strong>Your plan score</strong><p>${analysis.score} / 100 · ${escapeHtml(analysis.grade)}</p></div>
+      <div class="stat"><strong>Your plan score</strong><p>${analysis.score} / 100   ${escapeHtml(analysis.grade)}</p></div>
       <div class="stat"><strong>Weighted risk</strong><p>${escapeHtml(analysis.weighted_risk)} / 5</p></div>
-      <div class="stat"><strong>Average return</strong><p>${escapeHtml(analysis.weighted_average_return)}% ·
+      <div class="stat"><strong>Average return</strong><p>${escapeHtml(analysis.weighted_average_return)}%  
         ${escapeHtml(analysis.weighted_average_return_label)}</p></div>
       <div class="stat"><strong>Monthly amount</strong><p>${money(analysis.monthly_amount)}</p></div>
     </div>
     <h2>Six checks</h2>
     <div class="result-grid">${analysis.checks.map((check) => `
       <div class="check ${check.status === "good" ? "passed" : "failed"}">
-        <strong>${escapeHtml(check.name)} · ${check.score}/${check.max_points}</strong>
+        <strong>${escapeHtml(check.name)}   ${check.score}/${check.max_points}</strong>
         <p>${escapeHtml(check.message)}</p>
       </div>`).join("")}</div>
     ${goal ? `<section class="dashboard-panel">
@@ -1513,16 +1736,16 @@ function renderPlanReview(analysis, comparison, minePreview, suggestedPreview) {
     <p>${escapeHtml(comparison.summary)}</p>
     <div class="comparison-grid">
       <article class="dashboard-panel">
-        <h3>Your plan · ${analysis.score}/100 · ${escapeHtml(analysis.grade)}</h3>
-        <p>Weighted risk ${escapeHtml(analysis.weighted_risk)} · Goal chance
+        <h3>Your plan   ${analysis.score}/100   ${escapeHtml(analysis.grade)}</h3>
+        <p>Weighted risk ${escapeHtml(analysis.weighted_risk)}   Goal chance
           ${goal ? `${escapeHtml(goal.chance_percent)}%` : "not set"}</p>
         <div class="chart-wrap"><canvas id="review-your-chart" aria-label="Your plan donut chart"></canvas></div>
         ${growthSummary(analysis.growth)}
       </article>
       <article class="dashboard-panel">
-        <h3>ArthMitra's suggestion · ${comparison.suggested_analysis.score}/100 ·
+        <h3>ArthMitra's suggestion   ${comparison.suggested_analysis.score}/100  
           ${escapeHtml(comparison.suggested_analysis.grade)}</h3>
-        <p>Weighted risk ${escapeHtml(comparison.suggested_analysis.weighted_risk)} · Goal chance
+        <p>Weighted risk ${escapeHtml(comparison.suggested_analysis.weighted_risk)}   Goal chance
           ${comparison.suggested_analysis.goal
             ? `${escapeHtml(comparison.suggested_analysis.goal.chance_percent)}%` : "not set"}</p>
         <div class="chart-wrap"><canvas id="review-suggested-chart" aria-label="Suggested plan donut chart"></canvas></div>
@@ -1592,9 +1815,9 @@ function renderPlanReview(analysis, comparison, minePreview, suggestedPreview) {
 
 // This function lists five- and ten-year ranges without blending the part returns.
 function growthSummary(growth) {
-  return `<div><h4>Growth examples · Expected, not guaranteed</h4>
+  return `<div><h4>Growth examples   Expected, not guaranteed</h4>
     ${["5", "10"].map((years) => `<p>${years} years:
-      Low ${money(growth[years].low)} · Middle ${money(growth[years].mid)} ·
+      Low ${money(growth[years].low)}   Middle ${money(growth[years].mid)}  
       High ${money(growth[years].high)}.</p>`).join("")}</div>`;
 }
 
@@ -1639,8 +1862,8 @@ async function showInvestmentJourney() {
     app.innerHTML = `<section class="card">
       <h1>Your investing journey</h1>
       <div class="dashboard-panel"><h2>Where</h2>
-        ${journey.where.map((part) => `<p><strong>${escapeHtml(part.name)}</strong> ·
-          ${escapeHtml(part.share)}% — ${escapeHtml(part.reason)}</p>`).join("")}</div>
+        ${journey.where.map((part) => `<p><strong>${escapeHtml(part.name)}</strong>  
+          ${escapeHtml(part.share)}% \u2014 ${escapeHtml(part.reason)}</p>`).join("")}</div>
       <div class="dashboard-panel"><h2>How</h2>
         ${journey.how.map((part) => `<h3>${escapeHtml(part.name)}</h3>
           <ol>${part.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol>`).join("")}</div>
@@ -1648,8 +1871,8 @@ async function showInvestmentJourney() {
         <p>Money invested and possible earnings are shown separately. Expected, not guaranteed.</p>
         <div class="chart-wrap"><canvas id="journey-growth-chart" aria-label="Low, middle and high growth examples"></canvas></div>
         ${growthSummary(journey.growth)}
-        ${["5", "10"].map((years) => `<p>${years} years · Money invested:
-          ${money(journey.growth[years].invested)} · Middle earnings example:
+        ${["5", "10"].map((years) => `<p>${years} years   Money invested:
+          ${money(journey.growth[years].invested)}   Middle earnings example:
           ${money(journey.growth[years].earned_mid)}.</p>`).join("")}
       </div>
       <div class="dashboard-panel"><h2>Profit, the realistic way</h2>
@@ -1718,7 +1941,7 @@ async function showMyProfile() {
       apiRequest("/readiness"),
       apiRequest("/smart-monthly-amount"),
     ]);
-    const saveMessage = profileSaveNotice ? `<p class="status-chip good" role="status">✓ ${escapeHtml(profileSaveNotice)}</p>` : ""; // Announce a saved preference after refresh.
+    const saveMessage = profileSaveNotice ? `<p class="status-chip good" role="status">\u2713 ${escapeHtml(profileSaveNotice)}</p>` : ""; // Announce a saved preference after refresh.
     profileSaveNotice = ""; // Show the save confirmation only once.
     app.innerHTML = `
       <section class="card">
@@ -1762,6 +1985,7 @@ async function showMyProfile() {
     `;
     document.getElementById("profile-edit").addEventListener("click", showMoneyDetails);
     bindSmartAmountToggles(); // Bind the profile's step-up comparison.
+    bindSmartAmountControls(smartAmount);
     document.getElementById("profile-capacity-form").addEventListener("submit", saveProfileCapacity); // Save editable monthly preferences.
     document.getElementById("profile-quiz").addEventListener("click", showRetakeQuiz);
     document.getElementById("profile-password").addEventListener("click", showChangePassword);
@@ -2140,31 +2364,31 @@ async function downloadReport() {
 
 function reportStatusBadge(status) { // Show a status word and icon, not color alone.
   const label = status?.label || status?.severity || "Watch"; // Keep a readable status label.
-  const icon = status?.icon || (label === "Good" ? "✓" : "!"); // Add an icon for color-blind readers.
+  const icon = status?.icon || (label === "Good" ? "\u2713" : "!"); // Add an icon for color-blind readers.
   const kind = status?.kind || label.toLowerCase(); // Pick a color style from the status type.
   return `<span class="report-badge ${escapeHtml(kind)}">${escapeHtml(icon)} ${escapeHtml(label)}</span>`; // Show the accessible badge.
 } // Finish the status badge helper.
 
 function reportNote(meaning, status = "Watch") { // Start each report section with two clear lines.
   const label = status === "Good" ? "Good" : status === "Problem" ? "Problem" : "Watch"; // Choose a simple status word.
-  const icon = label === "Good" ? "✓" : label === "Problem" ? "!" : "?"; // Pair the word with a clear icon.
+  const icon = label === "Good" ? "\u2713" : label === "Problem" ? "!" : "?"; // Pair the word with a clear icon.
   const message = label === "Good" ? "Your saved information has a positive sign." : label === "Problem" ? "Check the problem items and next steps below." : "Check the values and notes below."; // Use short, steady wording.
   return `<div class="report-meaning"><p><strong>What this means:</strong> ${escapeHtml(meaning)}</p><p><strong>Good news / Watch out:</strong> ${icon} ${label}. ${message}</p></div>`; // Return the two-line meaning box.
 } // Finish the section meaning helper.
 
 function reportTable(headers, rows, emptyMessage = "") { // Build a mobile-safe report table.
   const body = rows.length
-    ? rows.map((row) => `<tr>${row.map((cell) => `<td>${cell || "—"}</td>`).join("")}</tr>`).join("")
+    ? rows.map((row) => `<tr>${row.map((cell) => `<td>${cell || "-"}</td>`).join("")}</tr>`).join("")
     : `<tr><td colspan="${headers.length}">${escapeHtml(emptyMessage || "No saved information yet.")}</td></tr>`; // Show an honest empty row.
   return `<div class="report-table-wrap"><table class="report-table"><thead><tr>${headers.map((header) => `<th scope="col">${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>`; // Return a scrollable accessible table.
 } // Finish the report table helper.
 
 function reportNumber(value, suffix = "") { // Format saved values without making new financial calculations.
-  return value === null || value === undefined ? "—" : `${escapeHtml(value)}${suffix}`; // Keep missing values clear.
+  return value === null || value === undefined ? "-" : `${escapeHtml(value)}${suffix}`; // Keep missing values clear.
 } // Finish the report number helper.
 
 function reportMoney(value) { // Show a backend money value in Indian rupee format.
-  return value === null || value === undefined ? "—" : escapeHtml(money(value)); // Format only for display.
+  return value === null || value === undefined ? "-" : escapeHtml(money(value)); // Format only for display.
 } // Finish the report money helper.
 
 function renderReportCharts(report) { // Draw charts from the backend's report data.
@@ -2215,7 +2439,7 @@ function renderReportCharts(report) { // Draw charts from the backend's report d
 } // Finish report chart drawing.
 
 function reportSection(id, title, note, content, status = "Watch") { // Wrap one report section in an accessible collapsible panel.
-  return `<details class="report-section" id="${escapeHtml(id)}" open><summary>${escapeHtml(title)} ${reportStatusBadge({ label: status, icon: status === "Good" ? "✓" : status === "Problem" ? "!" : "?", kind: status.toLowerCase() })}</summary>${reportNote(note, status)}${content}</details>`; // Keep the section easy to find and open.
+  return `<details class="report-section" id="${escapeHtml(id)}" open><summary>${escapeHtml(title)} ${reportStatusBadge({ label: status, icon: status === "Good" ? "\u2713" : status === "Problem" ? "!" : "?", kind: status.toLowerCase() })}</summary>${reportNote(note, status)}${content}</details>`; // Keep the section easy to find and open.
 } // Finish the report section helper.
 
 function renderReport(report) { // Build all thirteen requested report sections.
@@ -2235,10 +2459,10 @@ function renderReport(report) { // Build all thirteen requested report sections.
   const journeyTotals = report.journey[4] || {}; // Read the attached log summary values.
   const comparisonRows = report.past_present.rows.map((row) => {
     const nonMoney = ["Health score", "Plan score", "Emergency fund months"].includes(row.item) || row.item.startsWith("Goal chance:"); // Keep scores and chances as plain numbers.
-    const formatValue = (value) => value === null ? "—" : nonMoney ? reportNumber(value) : reportMoney(value); // Format each past or present value by its unit.
+    const formatValue = (value) => value === null ? "-" : nonMoney ? reportNumber(value) : reportMoney(value); // Format each past or present value by its unit.
     return [
     escapeHtml(row.item), formatValue(row.past), formatValue(row.present), formatValue(row.change),
-    row.change_percent === "New" ? "New" : reportNumber(row.change_percent, "%"), reportStatusBadge({ label: row.arrow, icon: row.arrow === "better" ? "↑" : row.arrow === "worse" ? "↓" : "=", kind: row.arrow }),
+    row.change_percent === "New" ? "New" : reportNumber(row.change_percent, "%"), reportStatusBadge({ label: row.arrow, icon: row.arrow === "better" ? "\u2191" : row.arrow === "worse" ? "\u2193" : "=", kind: row.arrow }),
   ]; }); // Show changes with arrows and words.
   const planRows = report.plan.parts.map((part) => [
     escapeHtml(part.name), reportNumber(part.share, "%"), reportMoney(part.monthly_amount), escapeHtml(part.risk_words),
@@ -2246,7 +2470,7 @@ function renderReport(report) { // Build all thirteen requested report sections.
   ]); // List only parts selected in the saved plan.
   planRows.push(["<strong>Total</strong>", `<strong>${reportNumber(report.plan.total_share, "%")}</strong>`, `<strong>${reportMoney(report.plan.total_monthly)}</strong>`, "", ""]); // Add backend plan totals.
   const checkRows = report.plan.checks.map((check) => [
-    escapeHtml(check.name), reportStatusBadge({ label: check.status, icon: check.status === "Good" ? "✓" : "!", kind: check.status.toLowerCase() }),
+    escapeHtml(check.name), reportStatusBadge({ label: check.status, icon: check.status === "Good" ? "\u2713" : "!", kind: check.status.toLowerCase() }),
     `${reportNumber(check.score)} / ${reportNumber(check.max_points)}`, escapeHtml(check.message),
   ]); // Show the plan's five checks.
   const goalsContent = report.goals.map((goal, index) => `
@@ -2258,8 +2482,8 @@ function renderReport(report) { // Build all thirteen requested report sections.
         `${reportMoney(goal.value_today)} (${escapeHtml(goal.value_label)})`, reportMoney(goal.planned_by_now),
         reportMoney(goal.ahead_behind), reportNumber(goal.chance_now, "%"), reportMoney(goal.catch_up_monthly),
       ]])}
-      <p>Chance with your plan: ${reportNumber(goal.chance_with_plan, "%")} · Chance with your real investments: ${reportNumber(goal.chance_now, "%")}</p>
-      <p>Streak: ${reportNumber(goal.streak_months)} months · Consistency: ${reportNumber(goal.consistency_percent, "%")} · Last updated: ${escapeHtml(goal.last_updated || "Not yet")}</p>
+      <p>Chance with your plan: ${reportNumber(goal.chance_with_plan, "%")}   Chance with your real investments: ${reportNumber(goal.chance_now, "%")}</p>
+      <p>Streak: ${reportNumber(goal.streak_months)} months   Consistency: ${reportNumber(goal.consistency_percent, "%")}   Last updated: ${escapeHtml(goal.last_updated || "Not yet")}</p>
       <p>${escapeHtml(goal.next_step)}</p>
       <div class="report-chart-box"><canvas id="report-goal-chart-${index}" aria-label="Planned and real contributions for ${escapeHtml(goal.name)}"></canvas></div>
       <p class="report-caption">The table above shows the same goal's planned and real contribution amounts.</p>
@@ -2269,8 +2493,8 @@ function renderReport(report) { // Build all thirteen requested report sections.
     reportNumber(debt.months_left), reportMoney(debt.interest_left),
   ]); // Show every saved debt and its payoff facts.
   const logRows = report.investment_logs.items.map((row) => [
-    escapeHtml(row.date_time || "—"), escapeHtml(row.month), reportMoney(row.amount), escapeHtml(row.part || "—"),
-    escapeHtml(row.note || "—"), reportStatusBadge({ label: row.status, icon: row.status === "Added" ? "✓" : row.status === "Edited" ? "↻" : "×", kind: row.status.toLowerCase() }),
+    escapeHtml(row.date_time || "-"), escapeHtml(row.month), reportMoney(row.amount), escapeHtml(row.part || "-"),
+    escapeHtml(row.note || "\u2014"), reportStatusBadge({ label: row.status, icon: row.status === "Added" ? "\u2713" : row.status === "Edited" ? "\u21bb" : "\u00d7", kind: row.status.toLowerCase() }),
   ]); // Show saved log history with status words and icons.
   const outlookRows = report.outlook.rows.map((row) => [
     `${reportNumber(row.years)} years`,
@@ -2302,7 +2526,7 @@ function renderReport(report) { // Build all thirteen requested report sections.
   ]); // Make the next-month list keyboard friendly.
   const marketRows = (report.market?.items || []).map((item) => [
     escapeHtml(item.name), reportNumber(item.value, "%"),
-    item.source_url ? `<a href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener noreferrer">Source</a>` : "—",
+    item.source_url ? `<a href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener noreferrer">Source</a>` : "-",
   ]); // Keep each public market source visible.
   const assumptionRows = report.assumptions.rates.map((item) => [
     escapeHtml(item.idea), reportNumber(item.low, "%"), reportNumber(item.middle, "%"), reportNumber(item.high, "%"),
@@ -2315,10 +2539,10 @@ function renderReport(report) { // Build all thirteen requested report sections.
     : `<p>Healthy ranges are simple guides, not rules for every family.</p>${reportTable(["Item", "Value", "Healthy range", "Status"], profileRows)}<div class="report-chart-box"><canvas id="report-profile-chart" aria-label="Income, expenses, EMI and money left"></canvas></div><p class="report-caption">The table above gives the same amounts as the chart.</p>${smartAmountMarkup(report.monthly_amount_suggestion)}`; // Keep missing profile information from looking like zero values.
   const comparisonContent = report.past_present.empty
     ? `<p class="report-empty">Past and present comparisons will appear after your first saved profile or plan update.</p>`
-    : `${reportTable(["Item", `Past (${escapeHtml(report.past_present.past_date || "—")})`, `Present (${escapeHtml(report.past_present.present_date || "—")})`, "Change", "Change %", "Arrow"], comparisonRows)}<div class="report-chart-grid"><div><div class="report-chart-box"><canvas id="report-health-chart" aria-label="Health score over time"></canvas></div><p class="report-caption">Saved health scores over time.</p></div><div><div class="report-chart-box"><canvas id="report-value-chart" aria-label="Total invested compared with value today"></canvas></div><p class="report-caption">Saved total invested and value today.</p></div>${report.investment_logs.empty ? "" : `<div><div class="report-chart-box"><canvas id="report-logs-chart" aria-label="Monthly planned and actual investment amounts"></canvas></div><p class="report-caption">The investment log table below has the amounts behind this chart.</p></div>`}</div>`; // Keep an empty account from showing invented chart points.
+    : `${reportTable(["Item", `Past (${escapeHtml(report.past_present.past_date || "-")})`, `Present (${escapeHtml(report.past_present.present_date || "-")})`, "Change", "Change %", "Arrow"], comparisonRows)}<div class="report-chart-grid"><div><div class="report-chart-box"><canvas id="report-health-chart" aria-label="Health score over time"></canvas></div><p class="report-caption">Saved health scores over time.</p></div><div><div class="report-chart-box"><canvas id="report-value-chart" aria-label="Total invested compared with value today"></canvas></div><p class="report-caption">Saved total invested and value today.</p></div>${report.investment_logs.empty ? "" : `<div><div class="report-chart-box"><canvas id="report-logs-chart" aria-label="Monthly planned and actual investment amounts"></canvas></div><p class="report-caption">The investment log table below has the amounts behind this chart.</p></div>`}</div>`; // Keep an empty account from showing invented chart points.
   app.innerHTML = `<div class="report-page">
     <header class="report-toolbar">
-      <div><h1>My money report</h1><p>${escapeHtml(report.name)} · Generated ${escapeHtml(report.generated_at_local)}</p></div>
+      <div><h1>My money report</h1><p>${escapeHtml(report.name)}   Generated ${escapeHtml(report.generated_at_local)}</p></div>
       <label>Report period <select id="report-period" aria-label="Choose report period">
         <option value="since_started" ${report.period === "since_started" ? "selected" : ""}>Since I started</option>
         <option value="last_month" ${report.period === "last_month" ? "selected" : ""}>Last month</option>
@@ -2337,15 +2561,15 @@ function renderReport(report) { // Build all thirteen requested report sections.
       <div><span>Plan score</span><strong>${reportNumber(cards.plan_score)} / 100</strong></div>
       <div><span>Goal chance</span><strong>${reportNumber(cards.goal_chance, "%")}</strong></div>
       <div><span>Investor type</span><strong>${escapeHtml(cards.investor_type)}</strong></div>
-    </div><p class="report-period-label">${escapeHtml(report.period_label)} · ${escapeHtml(report.period_start || "No past date")} to ${escapeHtml(report.period_end || "Today")}</p><ol class="report-summary">${report.summary.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ol>`, report.report_ready.has_profile ? "Good" : "Watch")}
+    </div><p class="report-period-label">${escapeHtml(report.period_label)}   ${escapeHtml(report.period_start || "No past date")} to ${escapeHtml(report.period_end || "Today")}</p><ol class="report-summary">${report.summary.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ol>`, report.report_ready.has_profile ? "Good" : "Watch")}
     ${reportSection("report-profile", "2. YOUR PROFILE TODAY", "This shows income, spending, savings, and monthly debt payments.", profileContent, report.profile.empty ? "Watch" : "Good")}
-    ${reportSection("report-journey", "3. YOUR JOURNEY SO FAR", "This timeline shows when each setup step was first completed.", `${journey}<p>Investment log streak: ${reportNumber(journeyTotals.investment_log_streak_months)} months · Consistency: ${reportNumber(journeyTotals.investment_log_consistency_percent, "%")}</p>`, "Good")}
+    ${reportSection("report-journey", "3. YOUR JOURNEY SO FAR", "This timeline shows when each setup step was first completed.", `${journey}<p>Investment log streak: ${reportNumber(journeyTotals.investment_log_streak_months)} months   Consistency: ${reportNumber(journeyTotals.investment_log_consistency_percent, "%")}</p>`, "Good")}
     ${reportSection("report-past-present", "4. PAST VS PRESENT", "This compares the first and latest saved snapshots in your selected period.", comparisonContent, report.past_present.empty ? "Watch" : "Good")}
-    ${reportSection("report-plan", "5. YOUR INVESTMENT PLAN", "Only the parts saved in your plan are shown here.", `${report.plan.empty ? `<p class="report-empty">You have not chosen investments yet. <button type="button" data-report-plan-link>Choose my investments</button></p>` : reportTable(["Idea", "Share %", "Each month", "Risk level", "Expected return range"], planRows)}${report.plan.empty ? "" : `<p><strong>Total:</strong> ${reportNumber(report.plan.total_share, "%")} · ${reportMoney(report.plan.total_monthly)} each month</p><div class="report-chart-box report-donut"><canvas id="report-plan-chart" aria-label="Chosen investment parts"></canvas></div><p class="report-caption">The table above shows each selected part and its share.</p><p>Plan score: ${reportNumber(report.plan.plan_score)} / 100 · Risk score: ${reportNumber(report.plan.risk.weighted)} · ${report.plan.risk.within_range ? "Inside" : "Outside"} your ${escapeHtml(report.plan.risk.investor_type || "not set")} range.</p><div class="report-risk-meter" role="img" aria-label="Weighted plan risk ${escapeHtml(report.plan.risk.weighted)} out of 5"><span style="width:${Math.max(0, Math.min(100, Number(report.plan.risk.weighted || 0) * 20))}%"></span></div>${reportTable(["Plan check", "Status", "Score", "What it says"], checkRows, "Save a plan to see its five checks.")}`}<p>Expected, not guaranteed.</p>`, report.plan.empty ? "Watch" : (report.plan.risk.within_range ? "Good" : "Problem"))}
+    ${reportSection("report-plan", "5. YOUR INVESTMENT PLAN", "Only the parts saved in your plan are shown here.", `${report.plan.empty ? `<p class="report-empty">You have not chosen investments yet. <button type="button" data-report-plan-link>Choose my investments</button></p>` : reportTable(["Idea", "Share %", "Each month", "Risk level", "Expected return range"], planRows)}${report.plan.empty ? "" : `<p><strong>Total:</strong> ${reportNumber(report.plan.total_share, "%")}   ${reportMoney(report.plan.total_monthly)} each month</p><div class="report-chart-box report-donut"><canvas id="report-plan-chart" aria-label="Chosen investment parts"></canvas></div><p class="report-caption">The table above shows each selected part and its share.</p><p>Plan score: ${reportNumber(report.plan.plan_score)} / 100   Risk score: ${reportNumber(report.plan.risk.weighted)}   ${report.plan.risk.within_range ? "Inside" : "Outside"} your ${escapeHtml(report.plan.risk.investor_type || "not set")} range.</p><div class="report-risk-meter" role="img" aria-label="Weighted plan risk ${escapeHtml(report.plan.risk.weighted)} out of 5"><span style="width:${Math.max(0, Math.min(100, Number(report.plan.risk.weighted || 0) * 20))}%"></span></div>${reportTable(["Plan check", "Status", "Score", "What it says"], checkRows, "Save a plan to see its five checks.")}`}<p>Expected, not guaranteed.</p>`, report.plan.empty ? "Watch" : (report.plan.risk.within_range ? "Good" : "Problem"))}
     ${reportSection("report-goals", "6. GOALS", "Goal progress uses real logged amounts and clearly labels estimated values.", goalsContent || `<p class="report-empty">Add a goal to see progress here.</p>`, report.goals.length ? "Good" : "Watch")}
-    ${reportSection("report-debts", "7. DEBTS", "This section compares two ways to pay down your saved debts.", `${reportTable(["Debt", "Balance", "Interest rate", "EMI", "Months left", "Total interest left"], debtRows, "You have no debts saved.")}<p>Avalanche: ${reportMoney(report.debts.avalanche.interest)} interest · debt-free ${escapeHtml(report.debts.avalanche.debt_free_date || "date not available")}. Snowball: ${reportMoney(report.debts.snowball.interest)} interest · debt-free ${escapeHtml(report.debts.snowball.debt_free_date || "date not available")}.</p><div class="report-chart-box"><canvas id="report-debt-chart" aria-label="Debt balance over time"></canvas></div><p class="report-caption">The debt table above shows the starting balances and payoff estimates.</p>`, report.debts.empty ? "Good" : "Watch")}
-    ${reportSection("report-investment-log", "8. INVESTMENT LOG", "These are your saved monthly updates, including edited and deleted rows.", `${reportTable(["Date and time (Asia/Kolkata)", "Month", "Amount", "Part", "Note", "Status"], logRows, "Log your first investment to see your progress here.")}<p>Planned in the last 12 months: ${reportMoney(report.investment_logs.planned_last_12_months)} · Actual: ${reportMoney(report.investment_logs.actual_last_12_months)}</p>`, report.investment_logs.empty ? "Watch" : "Good")}
-    ${reportSection("report-future", "9. FUTURE OUTLOOK", "These are possible outcomes using each saved plan part's own return assumption.", `${report.outlook.empty ? `<p class="report-empty">Save a plan to see possible future outcomes.</p>` : `${reportTable(["Years", "Low case (value / earned)", "Middle case (value / earned)", "High case (value / earned)", "Total invested"], outlookRows)}<div class="report-chart-box"><canvas id="report-future-chart" aria-label="Three possible future paths"></canvas></div><p class="report-caption">The table above shows each case's value, money earned, and total invested.</p><p><strong>In one bad year your plan could temporarily fall by about ${reportNumber(report.outlook.stress_test.fall_percent, "%")} (about ${reportMoney(report.outlook.stress_test.loss)}).</strong></p>${reportTable(["Goal", "Low chance / year reached", "Middle chance / year reached", "High chance / year reached"], forecastRows, "Add a goal to see possible goal outcomes.")}`}<p><strong>These are possible outcomes, not predictions or promises.</strong></p>`, report.outlook.empty ? "Watch" : "Good")}
+    ${reportSection("report-debts", "7. DEBTS", "This section compares two ways to pay down your saved debts.", `${reportTable(["Debt", "Balance", "Interest rate", "EMI", "Months left", "Total interest left"], debtRows, "You have no debts saved.")}<p>Avalanche: ${reportMoney(report.debts.avalanche.interest)} interest   debt-free ${escapeHtml(report.debts.avalanche.debt_free_date || "date not available")}. Snowball: ${reportMoney(report.debts.snowball.interest)} interest   debt-free ${escapeHtml(report.debts.snowball.debt_free_date || "date not available")}.</p><div class="report-chart-box"><canvas id="report-debt-chart" aria-label="Debt balance over time"></canvas></div><p class="report-caption">The debt table above shows the starting balances and payoff estimates.</p>`, report.debts.empty ? "Good" : "Watch")}
+    ${reportSection("report-investment-log", "8. INVESTMENT LOG", "These are your saved monthly updates, including edited and deleted rows.", `${reportTable(["Date and time (Asia/Kolkata)", "Month", "Amount", "Part", "Note", "Status"], logRows, "Log your first investment to see your progress here.")}<p>Planned in the last 12 months: ${reportMoney(report.investment_logs.planned_last_12_months)}   Actual: ${reportMoney(report.investment_logs.actual_last_12_months)}</p>`, report.investment_logs.empty ? "Watch" : "Good")}
+    ${reportSection("report-future", "9. FUTURE OUTLOOK", "These are possible outcomes using each saved plan part's own return assumption.", `${report.outlook.smart_amount ? `<div class="dashboard-panel"><h3>Your selected monthly amount</h3><p>If you invest ${reportMoney(report.outlook.smart_amount.amount)} each month for ${reportNumber(report.outlook.smart_amount.years)} years, the middle case could be about ${reportMoney(report.outlook.smart_amount.middle)}. You put in ${reportMoney(report.outlook.smart_amount.invested)}.</p></div>` : ""}${report.outlook.empty ? `<p class="report-empty">Save a plan to see possible future outcomes.</p>` : `${reportTable(["Years", "Low case (value / earned)", "Middle case (value / earned)", "High case (value / earned)", "Total invested"], outlookRows)}<div class="report-chart-box"><canvas id="report-future-chart" aria-label="Three possible future paths"></canvas></div><p class="report-caption">The table above shows each case's value, money earned, and total invested.</p><p><strong>In one bad year your plan could temporarily fall by about ${reportNumber(report.outlook.stress_test.fall_percent, "%")} (about ${reportMoney(report.outlook.stress_test.loss)}).</strong></p>${reportTable(["Goal", "Low chance / year reached", "Middle chance / year reached", "High chance / year reached"], forecastRows, "Add a goal to see possible goal outcomes.")}`}<p><strong>These are possible outcomes, not predictions or promises.</strong></p>`, report.outlook.empty ? "Watch" : "Good")}
     ${reportSection("report-warnings", "10. WARNINGS AND ALERTS", "These checks point out things you may want to review.", `${reportTable(["Severity", "What we noticed", "Why it matters", "What to do"], warningRows, "No warning matched the saved information.")}<h3>Good news</h3><ul>${report.warnings.good_news.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`, report.warnings.items.some((item) => item.severity === "Problem") ? "Problem" : report.warnings.items.length ? "Watch" : "Good")}
     ${reportSection("report-actions", "11. ACTION PLAN", "Start with the most important next step and tick items as you do them.", `${reportTable(["Action", "Why", "How much", "By when"], actionRows, "Your action list will appear here.")}<h3>Next 30 days</h3>${reportTable(["Done", "Checklist"], checklistRows)}`, "Good")}
     ${reportSection("report-market", "12. MARKET SNAPSHOT", "Public market figures are shown with their source and date.", report.market ? `<p>Data as of ${escapeHtml(report.market.data_as_of)}. ${escapeHtml(report.market.message)}</p>${reportTable(["Market number", "Value", "Source"], marketRows, "No market figures are available.")}` : `<p class="report-empty">No market snapshot is available right now.</p>`, "Watch")}
@@ -2372,6 +2596,7 @@ function renderReport(report) { // Build all thirteen requested report sections.
   }); // Finish checklist setup.
   renderReportCharts(report); // Draw the charts after their canvases exist.
   bindSmartAmountToggles(); // Bind the monthly amount example inside the profile section.
+  bindSmartAmountControls(report.monthly_amount_suggestion);
 } // Finish report rendering.
 
 async function downloadReportFile(path, fallbackName) { // Download an authenticated file from the report API.
@@ -2404,7 +2629,7 @@ async function downloadReportCsv() { // Download the report's data as a CSV file
 async function showReports() {
   currentPage = "reports";
   document.getElementById("page-title").textContent = pageTitles.reports;
-  app.innerHTML = `<section class="card report-loading" aria-live="polite"><h1>Making your report…</h1><div class="report-skeleton"></div><div class="report-skeleton"></div><div class="report-skeleton"></div></section>`; // Show a friendly loading shape.
+  app.innerHTML = `<section class="card report-loading" aria-live="polite"><h1>Making your report\u2026</h1><div class="report-skeleton"></div><div class="report-skeleton"></div><div class="report-skeleton"></div></section>`; // Show a friendly loading shape.
   try {
     const report = await apiRequest(`/report/data?period=${encodeURIComponent(reportPeriod)}`); // Load the complete report in one request.
     reportPeriod = report.period; // Keep the period returned by the backend.
@@ -2575,15 +2800,15 @@ function renderGoalHistoryTable(progress, result) { // Build the newest-first mo
   const rows = result.logs.map((log) => {
     const canUndo = log.status === "Deleted" && state.undoId === log.id && Date.now() < Date.parse(state.undoUntil || "");
     const actions = log.status === "Deleted"
-      ? (canUndo ? `<button type="button" class="secondary-button" data-log-action="undo" data-log-id="${log.id}">Undo</button>` : "—")
+      ? (canUndo ? `<button type="button" class="secondary-button" data-log-action="undo" data-log-id="${log.id}">Undo</button>` : "-")
       : `<button type="button" class="secondary-button" data-log-action="edit" data-log-id="${log.id}">Edit</button>
          <button type="button" class="secondary-button" data-log-action="delete" data-log-id="${log.id}">Delete</button>`;
     return `<tr class="${log.status === "Deleted" ? "goal-log-deleted" : ""}">
       <td>${escapeHtml(formatGoalDateTime(log.updated_at))}</td>
       <td>${escapeHtml(formatGoalMonth(log.month))}</td>
       <td>${money(log.amount)}</td>
-      <td>${escapeHtml(ideaNames[log.part_id] || "—")}</td>
-      <td>${escapeHtml(log.note || "—")}</td>
+      <td>${escapeHtml(ideaNames[log.part_id] || "-")}</td>
+      <td>${escapeHtml(log.note || "-")}</td>
       <td>${escapeHtml(log.status)}</td>
       <td class="goal-log-actions">${actions}</td>
     </tr>`;
@@ -2597,7 +2822,7 @@ function renderGoalHistoryTable(progress, result) { // Build the newest-first mo
     </table>
   </div>
   <div class="goal-history-pages">
-    <span>Showing ${firstItem}–${lastItem} of ${result.total}</span>
+    <span>Showing ${firstItem}\u2013${lastItem} of ${result.total}</span>
     <button type="button" class="secondary-button" data-log-action="previous" ${result.page <= 1 ? "disabled" : ""}>Previous</button>
     <span>Page ${result.page} of ${Math.max(1, result.pages)}</span>
     <button type="button" class="secondary-button" data-log-action="next" ${result.page >= result.pages ? "disabled" : ""}>Next</button>
@@ -2667,7 +2892,7 @@ function showGoalLogForm(progress, log = null) { // Open and connect one goal's 
             <button type="button" data-duplicate-add>Add to it</button>
             ${result.existing_logs.map((item) =>
               `<button type="button" class="secondary-button" data-duplicate-edit="${item.id}">
-                Edit ${escapeHtml(formatGoalMonth(item.month))} · ${money(item.amount)}
+                Edit ${escapeHtml(formatGoalMonth(item.month))}   ${money(item.amount)}
               </button>`
             ).join("")}
           </div>`; // Offer add-to-month or edit-existing choices.
@@ -2865,7 +3090,7 @@ function renderGoalCard(progress) { // Build the plan and real-investment summar
   const months = Array.from({ length: 12 }, (_, index) => `<option value="${index + 1}" ${state.month === String(index + 1) ? "selected" : ""}>${new Intl.DateTimeFormat("en-IN", { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2020, index, 1)))}</option>`).join(""); // Show every month in the filter.
   return `<article class="dashboard-panel goal-card" id="goal-card-${domId}">
     <div class="goal-card-heading"><div><h2>${escapeHtml(goal.name)}</h2>
-      <p>${money(goal.amount)} goal · ${escapeHtml(goal.years)} years</p></div>
+      <p>${money(goal.amount)} goal   ${escapeHtml(goal.years)} years</p></div>
       <button type="button" class="secondary-button" data-goal-edit>Edit goal</button></div>
     <progress value="${escapeHtml(progress.value_progress_percent)}" max="100" aria-label="${escapeHtml(goal.name)} actual value progress"></progress>
     <p>Chance with your plan: <strong>${escapeHtml(progress.chance_with_plan)}%</strong></p>
@@ -2878,7 +3103,7 @@ function renderGoalCard(progress) { // Build the plan and real-investment summar
       <div class="stat"><strong>Next step</strong><p>${escapeHtml(progress.next_step)}</p></div>
     </div>
     <p class="goal-friendly-message ${aheadColor}" role="status">${escapeHtml(progress.friendly_message)}</p>
-    <p>Streak: ${escapeHtml(progress.streak_months)} months · Consistency: ${escapeHtml(progress.consistency_percent)}%</p>
+    <p>Streak: ${escapeHtml(progress.streak_months)} months   Consistency: ${escapeHtml(progress.consistency_percent)}%</p>
     <p>Last updated: ${escapeHtml(formatGoalDateTime(progress.last_updated))}</p>
     ${warnings.length ? `<div class="status goal-warnings" role="status">${warnings.map(escapeHtml).join(" ")}</div>` : ""}
     <div class="actions">
@@ -2955,7 +3180,7 @@ async function showDebts() { // Render only debt details and their updated calcu
       <p>Health score: ${health.score} / 100</p><!-- Show the refreshed health score. -->
       ${debts.length ? `<div class="result-grid">${debts.map((debt) => `<div class="stat"><!-- Show one saved debt. -->
         <h2>${escapeHtml(debt.name)}</h2><p>Left to pay: ${money(debt.amount)}</p><!-- Show the current debt balance. -->
-        <p>Interest: ${escapeHtml(debt.interest_rate)}% · Monthly payment: ${money(debt.emi)}</p><!-- Show the current payment facts. -->
+        <p>Interest: ${escapeHtml(debt.interest_rate)}%   Monthly payment: ${money(debt.emi)}</p><!-- Show the current payment facts. -->
         ${Number(debt.interest_rate) > 15 ? "<p>High interest: focus on this before taking extra investment risk.</p>" : ""}<!-- Explain costly debt. -->
       </div><!-- Finish this saved debt. -->`).join("")}</div>` : "<p>You have not added any debts.</p>"}<!-- Explain when no debts are saved. -->
       <button id="edit-debts" type="button">Edit debts</button></section><!-- Open the debts-only editor. -->`; // Render the updated debts.
@@ -2990,10 +3215,10 @@ function showLearn() {
     <h2>Money words</h2>
     <div class="result-grid">${tooltips.map(([term, meaning]) => `
       <p class="stat"><abbr class="term" title="${escapeHtml(meaning)}">${escapeHtml(term)} <span aria-hidden="true">?</span></abbr>
-      — ${escapeHtml(meaning)}</p>`).join("")}</div>
+      - ${escapeHtml(meaning)}</p>`).join("")}</div>
     ${simpleMode ? "" : `<div class="dashboard-panel"><h2>Detailed mode</h2>
       <p>SIP future value uses monthly rate r and number of months n:
-        FV = P × (((1 + r)^n − 1) / r) × (1 + r).</p>
+        FV = P x (((1 + r)^n - 1) / r) x (1 + r).</p>
       <p>Every result is an estimate based on an assumption.</p></div>`}
     <button id="learn-ideas" type="button">Browse investment ideas</button></section>`;
   document.getElementById("learn-ideas").addEventListener("click", () => navigate("ideas"));
@@ -3034,7 +3259,7 @@ async function answerCoachQuestion(event) {
     const rows = result.result?.items || [];
     target.innerHTML = `<p>${escapeHtml(result.answer)}</p>
       ${matched.length ? `<ul>${matched.map((idea) =>
-        `<li><strong>${escapeHtml(idea.name)}</strong> — ${idea.match_score}% match.
+        `<li><strong>${escapeHtml(idea.name)}</strong> - ${idea.match_score}% match.
           ${escapeHtml(idea.school_explanation)}</li>`).join("")}</ul>` : ""}
       ${rows.length ? `<ul>${rows.map((item) =>
         `<li>${escapeHtml(item.name)}: ${money(item.monthly_amount)} each month.</li>`).join("")}</ul>` : ""}

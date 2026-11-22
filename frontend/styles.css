@@ -1447,6 +1447,61 @@ body.dark .report-toc a:focus-visible {
   box-shadow: 0 6px 16px rgb(37 99 235 / 12%);
 }
 
+.smart-amount-option.selected,
+.smart-amount-option.recommended.selected {
+  border: 2px solid var(--primary);
+  background: #eff6ff;
+  box-shadow: 0 6px 16px rgb(37 99 235 / 12%);
+}
+
+.smart-check {
+  color: #16845b;
+  float: right;
+}
+
+.smart-amount-own,
+.smart-growth-controls {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.smart-amount-own {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+}
+
+.smart-amount-own .own-option,
+.smart-amount-own .smart-save-message,
+.smart-amount-own .smart-own-warning {
+  grid-column: 1 / -1;
+}
+
+.smart-growth-controls .chart-wrap,
+.smart-amount-table,
+.smart-options-chart {
+  width: 100%;
+}
+
+.smart-amount-table table,
+.smart-amount-table th,
+.smart-amount-table td {
+  border: 1px solid #dbeafe;
+  border-collapse: collapse;
+  padding: 8px;
+}
+
+.smart-amount-table .selected-row {
+  background: #eff6ff;
+  outline: 2px solid var(--primary);
+}
+
+body.dark .smart-amount-option.selected,
+body.dark .smart-amount-option.recommended.selected,
+body.dark .smart-amount-table .selected-row {
+  background: #172554;
+}
+
 .smart-amount-option small,
 .smart-amount-comparison small {
   color: #475569;

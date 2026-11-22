@@ -137,6 +137,19 @@ The Step 4 form, dashboard, Profile page, report, and AI coach use the same
 backend calculation. The optional yearly step-up is calculated month by month
 and keeps separate return assumptions for each selected plan part.
 
+`GET /smart-amount/growth?amount=&years=` adds exact part amounts with
+`split_monthly_amount`, grows each part at its Low/Middle/High rate, and sums
+the parts. It never averages plan rates. The response contains 1-30 years,
+invested money, earned money, goal chance, nearest goal years, and expense
+room. The saved plan belongs to the logged-in user; a missing plan uses
+ArthMitra's suggested split.
+
+`POST /smart-amount/use` confirms and saves the monthly amount, while retaining
+the saved plan's percentage shares. A missing plan creates ArthMitra's
+suggested split. The card updates by 300 ms debounce, and the expense slider
+is only a what-if control. The coach tool `get_amount_growth` answers an
+amount question with the same backend result.
+
 The exact developer credit is stored once as `APP_CREDIT` in
 `frontend/app-config.json`. The browser bootstrap uses it for the HTML author
 tag and shared footer; the backend reads the same file for the About/report
