@@ -1710,7 +1710,7 @@ function renderPlanReview(analysis, comparison, minePreview, suggestedPreview) {
     <div class="dashboard-grid">
       <div class="stat"><strong>Your plan score</strong><p>${analysis.score} / 100   ${escapeHtml(analysis.grade)}</p></div>
       <div class="stat"><strong>Weighted risk</strong><p>${escapeHtml(analysis.weighted_risk)} / 5</p></div>
-      <div class="stat"><strong>Average return</strong><p>${escapeHtml(analysis.weighted_average_return)}%  
+      <div class="stat"><strong>Average return</strong><p>${escapeHtml(analysis.weighted_average_return)}%
         ${escapeHtml(analysis.weighted_average_return_label)}</p></div>
       <div class="stat"><strong>Monthly amount</strong><p>${money(analysis.monthly_amount)}</p></div>
     </div>
@@ -1743,7 +1743,7 @@ function renderPlanReview(analysis, comparison, minePreview, suggestedPreview) {
         ${growthSummary(analysis.growth)}
       </article>
       <article class="dashboard-panel">
-        <h3>ArthMitra's suggestion   ${comparison.suggested_analysis.score}/100  
+        <h3>ArthMitra's suggestion   ${comparison.suggested_analysis.score}/100
           ${escapeHtml(comparison.suggested_analysis.grade)}</h3>
         <p>Weighted risk ${escapeHtml(comparison.suggested_analysis.weighted_risk)}   Goal chance
           ${comparison.suggested_analysis.goal
@@ -1817,7 +1817,7 @@ function renderPlanReview(analysis, comparison, minePreview, suggestedPreview) {
 function growthSummary(growth) {
   return `<div><h4>Growth examples   Expected, not guaranteed</h4>
     ${["5", "10"].map((years) => `<p>${years} years:
-      Low ${money(growth[years].low)}   Middle ${money(growth[years].mid)}  
+      Low ${money(growth[years].low)}   Middle ${money(growth[years].mid)}
       High ${money(growth[years].high)}.</p>`).join("")}</div>`;
 }
 
@@ -1862,7 +1862,7 @@ async function showInvestmentJourney() {
     app.innerHTML = `<section class="card">
       <h1>Your investing journey</h1>
       <div class="dashboard-panel"><h2>Where</h2>
-        ${journey.where.map((part) => `<p><strong>${escapeHtml(part.name)}</strong>  
+        ${journey.where.map((part) => `<p><strong>${escapeHtml(part.name)}</strong>
           ${escapeHtml(part.share)}% \u2014 ${escapeHtml(part.reason)}</p>`).join("")}</div>
       <div class="dashboard-panel"><h2>How</h2>
         ${journey.how.map((part) => `<h3>${escapeHtml(part.name)}</h3>
